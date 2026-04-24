@@ -84,9 +84,10 @@ const SCREENS = {
     MOOD_CHECK: "mood_check",
     AI_CHAT: "ai_chat",
     COACH_DIR: "coach_dir",
-    COACH_BOOKING_CONFIRM: "coach_booking_confirm",
-    PSYCHIATRIST_DIR: "psychiatrist_dir",
-    PSYCHIATRIST_BOOKING_CONFIRM: "psychiatrist_booking_confirm",
+    BOOKING_CALENDAR: "booking_calendar",
+    BOOKING_CONFIRM: "booking_confirm",
+    PROFESSIONAL_DIR: "professional_dir",
+    PROFESSIONAL_PROFILE: "professional_profile",
     MOOD_CALENDAR: "mood_calendar",
     RESOURCES: "resources",
     RESOURCE_DETAIL: "resource_detail",
@@ -101,15 +102,42 @@ const OPENING_MESSAGE = {
 };
 
 const COACHES = [
-    { name: "Coach Ria", specialties: ["Academic", "Self-esteem"], rating: 4.9, available: true, color: "#B39DDB" },
-    { name: "Coach Marco", specialties: ["Career", "Relationships"], rating: 4.7, available: true, color: "#81D4FA" },
-    { name: "Coach Ana", specialties: ["Family", "Sleep"], rating: 4.8, available: false, color: "#FF9A76" },
+    { name: "Counselor Ria", specialties: ["Academic", "Self-esteem"], rating: 4.9, available: true, color: "#B39DDB" },
+    { name: "Counselor Marco", specialties: ["Career", "Relationships"], rating: 4.7, available: true, color: "#81D4FA" },
+    { name: "Counselor Ana", specialties: ["Family", "Sleep"], rating: 4.8, available: false, color: "#FF9A76" },
 ];
 
-const PSYCHIATRISTS = [
-    { name: "Dr. Liwanag Reyes, MD", specialty: "Anxiety & Depression", nextSlot: "Thu 3:00 PM", color: "#B39DDB" },
-    { name: "Dr. Martin Guzman, MD", specialty: "Adolescent Psychiatry", nextSlot: "Fri 10:00 AM", color: "#81D4FA" },
-    { name: "Dr. Sofia Mendoza, MD", specialty: "Trauma & PTSD", nextSlot: "Mon 2:00 PM", color: "#FF9A76" },
+const PROFESSIONALS = [
+    {
+        name: "Dr. Liwanag Reyes, RPsy",
+        discipline: "Psychologist",
+        specialty: "Anxiety & Depression",
+        canPrescribe: false,
+        nextSlot: "Thu 3:00 PM",
+        color: "#B39DDB",
+        credentials: ["RPsy #10214", "MS Clinical Psychology", "8 years adolescent care"],
+        bio: "Focuses on anxiety, burnout, and study-related overwhelm for university students.",
+    },
+    {
+        name: "Dr. Martin Guzman, MD",
+        discipline: "Psychiatrist",
+        specialty: "Adolescent Psychiatry",
+        canPrescribe: true,
+        nextSlot: "Fri 10:00 AM",
+        color: "#81D4FA",
+        credentials: ["PRC MD #31244", "Board-certified Psychiatry", "11 years tele-consult care"],
+        bio: "Handles moderate to high-acuity concerns and medication reviews when needed.",
+    },
+    {
+        name: "Ms. Sofia Mendoza, RPM",
+        discipline: "Therapist",
+        specialty: "Trauma & PTSD",
+        canPrescribe: false,
+        nextSlot: "Mon 2:00 PM",
+        color: "#FF9A76",
+        credentials: ["RPM #8172", "Trauma-informed CBT", "Family systems therapy"],
+        bio: "Supports trauma recovery, grounding skills, and family communication plans.",
+    },
 ];
 
 const RESOURCES = [
@@ -586,7 +614,8 @@ export default function KAIbiganDemo() {
     const [resourceFilter, setResourceFilter] = useState("All");
     const [coachFilter, setCoachFilter] = useState("All");
     const [privacySheetOpen, setPrivacySheetOpen] = useState(false);
-    const [bookingSheet, setBookingSheet] = useState(null);
+    const [bookingContext, setBookingContext] = useState(null);
+    const [selectedProfessional, setSelectedProfessional] = useState(null);
     const [redFlagState, setRedFlagState] = useState({ open: false, onSafe: null });
     const [confirmation, setConfirmation] = useState(null);
     const chatEndRef = useRef(null);
@@ -608,6 +637,17 @@ export default function KAIbiganDemo() {
         return coachFilter === "All"
             ? COACHES
             : COACHES.filter((coach) => coach.specialties.includes(coachFilter));
+    }, [coachFilter]);
+
+    const filteredProfessionals = useMemo(() => {
+        if (coachFilter === "All") return PROFESSIONALS;
+
+        return PROFESSIONALS.filter((professional) => {
+            const discipline = professional.discipline.toLowerCase();
+            const specialty = professional.specialty.toLowerCase();
+            const filter = coachFilter.toLowerCase();
+            return discipline.includes(filter) || specialty.includes(filter);
+        });
     }, [coachFilter]);
 
     const showNav = [SCREENS.HOME, SCREENS.AI_CHAT, SCREENS.RESOURCES, SCREENS.MOOD_CALENDAR, SCREENS.PROFILE].includes(screen);
@@ -828,18 +868,24 @@ export default function KAIbiganDemo() {
         nav(SCREENS.HOME);
     }
 
-    function bookProvider(type, provider, slot, mode = "live") {
+    function bookProvider(type, provider, slot, mode = "live", isPaid = false) {
         const entry = {
             type,
             name: provider.name,
             slot,
             mode,
+            isPaid,
         };
 
         setBookings((current) => [...current, entry]);
         setConfirmation(entry);
-        setBookingSheet(null);
-        nav(type === "coach" ? SCREENS.COACH_BOOKING_CONFIRM : SCREENS.PSYCHIATRIST_BOOKING_CONFIRM);
+        setBookingContext(null);
+        nav(SCREENS.BOOKING_CONFIRM);
+    }
+
+    function openBookingCalendar(type, provider, isPaid = false) {
+        setBookingContext({ type, provider, isPaid });
+        nav(SCREENS.BOOKING_CALENDAR);
     }
 
     function handleSignOut() {
@@ -874,22 +920,22 @@ export default function KAIbiganDemo() {
                 next: SCREENS.AI_CHAT,
             },
             2: {
-                heading: "A coach could help",
+                heading: "Talk to your guidance counselor",
                 body: supportAccess.asyncCoaching
-                    ? `Your plan includes async coaching and ${supportAccess.tier.liveCoachSessions} live coach sessions per year to keep human support prioritized for the moments that matter most.`
-                    : "Your current plan stays AI-first. You can continue with your AI kaibigan and school-approved self-help tools while human support is reserved for higher tiers.",
-                action: supportAccess.asyncCoaching ? "See coaching options" : "Stay with AI",
+                    ? "Your school's guidance counselor is on the platform. Anonymous to start, real support when you're ready."
+                    : "Your current plan stays AI-first. You can continue with your AI kaibigan while your school guidance office handles urgent escalation pathways.",
+                action: supportAccess.asyncCoaching ? "Book a counselor" : "Stay with AI",
                 next: supportAccess.asyncCoaching ? SCREENS.COACH_DIR : SCREENS.AI_CHAT,
             },
             3: {
-                heading: "Connect with a psychiatrist",
+                heading: "Connect with a licensed professional",
                 body: supportAccess.psychiatristAccess
-                    ? "For the kind of support you need, a licensed psychiatrist is the right next step. Bookings happen through your school partnership at no cost."
+                    ? "For the kind of support you need, a licensed psychologist, psychiatrist, or therapist is the right next step. Your 2 therapy sessions are covered by your school's Premium plan."
                     : supportAccess.asyncCoaching
-                        ? "Your plan routes this level of need through async coaching, limited live coach sessions, and formal school escalation when required. A psychiatrist consult is available on Premium accounts."
-                        : "Your plan routes high-acuity needs through crisis support, school guidance escalation, and continued AI support. Psychiatrist tele-consults are reserved for Premium accounts.",
-                action: supportAccess.psychiatristAccess ? "Book now" : supportAccess.asyncCoaching ? "See support options" : "Go to Home",
-                next: supportAccess.psychiatristAccess ? SCREENS.PSYCHIATRIST_DIR : supportAccess.asyncCoaching ? SCREENS.COACH_DIR : SCREENS.HOME,
+                        ? "Your plan routes this level through guidance counselor support first, then licensed professionals if higher-acuity support is needed."
+                        : "Your plan routes high-acuity needs through crisis support, school guidance escalation, and continued AI support. Full professional booking is reserved for Premium accounts.",
+                action: supportAccess.psychiatristAccess ? "See professionals" : supportAccess.asyncCoaching ? "See support options" : "Go to Home",
+                next: supportAccess.psychiatristAccess ? SCREENS.PROFESSIONAL_DIR : supportAccess.asyncCoaching ? SCREENS.COACH_DIR : SCREENS.HOME,
             },
         };
         const currentCopy = copyMap[level];
@@ -966,7 +1012,7 @@ export default function KAIbiganDemo() {
                             <Blob mood={MOODS[2]} size={100} face="happy" animate={false} />
                         </div>
                         <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 32, fontWeight: 700, color: t.text, marginTop: 20 }}>kAIbigan</p>
-                        <p style={{ color: t.textTertiary, fontSize: 13, marginTop: 6, fontFamily: "'DM Sans', sans-serif" }}>Your wellness companion</p>
+                        <p style={{ color: t.textTertiary, fontSize: 13, marginTop: 6, fontFamily: "'DM Sans', sans-serif" }}>Your AI Kaibigan for Mental Wellness.</p>
                     </div>
                 );
 
@@ -974,18 +1020,25 @@ export default function KAIbiganDemo() {
                 return (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 24px 28px", background: t.bg }}>
                         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
-                            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 34, fontWeight: 800, color: t.text, textAlign: "center", lineHeight: 1.15, animation: "fadeInUp 0.6s ease" }}>Wellness support,<br />quietly by your side.</p>
+                            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 34, fontWeight: 800, color: t.text, textAlign: "center", lineHeight: 1.15, animation: "fadeInUp 0.6s ease" }}>How are you feeling<br />right now?</p>
                             <p style={{ color: t.textSecondary, fontSize: 13, textAlign: "center", lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif", marginTop: 16, maxWidth: 250 }}>
-                                Anonymous school-verified support, from AI check-ins to prioritized human escalation.
+                                Check in with yourself. It's the first step to feeling better.
                             </p>
                         </div>
-                        <div style={{ background: "linear-gradient(180deg, #FFD93D 0%, #FF9A76 100%)", borderRadius: 28, padding: "32px 20px", display: "flex", flexDirection: "column", alignItems: "center", animation: "fadeInUp 1s ease" }}>
-                            <Blob mood={MOODS[1]} size={102} face="cheerful" />
-                            <button onClick={() => nav(SCREENS.ANON_SIGNIN)} style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: "#1a1a2e", color: "#fff", fontSize: 16, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", marginTop: 16 }}>
-                                Get Started
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, justifyItems: "center", marginBottom: 30, animation: "fadeInUp 0.8s ease" }}>
+                            {MOODS.map((mood) => (
+                                <div key={mood.name} onClick={() => nav(SCREENS.ANON_SIGNIN)} style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer", padding: 12, borderRadius: 20, background: theme === "dark" ? `${mood.color}16` : `${mood.color}12`, border: `2px solid ${mood.color}55`, transition: "all 0.2s" }}>
+                                    <Blob mood={mood} size={60} face={mood.face} />
+                                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, color: t.text, marginTop: 6 }}>{mood.name}</p>
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "fadeInUp 1s ease" }}>
+                            <button onClick={() => nav(SCREENS.ANON_SIGNIN)} style={{ width: "100%", padding: "16px", borderRadius: 16, border: `1px solid ${t.pillBorder}`, background: t.pillBg, color: t.text, fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
+                                Skip and Create Account
                             </button>
-                            <p style={{ color: "rgba(0,0,0,0.55)", fontSize: 13, marginTop: 12, fontFamily: "'DM Sans', sans-serif" }}>
-                                Already in the demo? <span style={{ textDecoration: "underline", fontWeight: 700, color: "#1a1a2e", cursor: "pointer" }} onClick={() => nav(session ? SCREENS.HOME : SCREENS.ANON_SIGNIN)}>Continue</span>
+                            <p style={{ color: t.textSecondary, fontSize: 13, textAlign: "center", fontFamily: "'DM Sans', sans-serif" }}>
+                                Already in the demo? <span style={{ textDecoration: "underline", fontWeight: 700, color: t.text, cursor: "pointer" }} onClick={() => nav(session ? SCREENS.HOME : SCREENS.ANON_SIGNIN)}>Continue</span>
                             </p>
                         </div>
                     </div>
@@ -1195,7 +1248,7 @@ export default function KAIbiganDemo() {
                                         <p style={{ color: t.textSecondary, fontSize: 11, letterSpacing: 1.1, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{supportAccess.tier.label} account</p>
                                         <p style={{ color: t.text, fontSize: 14, fontWeight: 700, marginTop: 6, fontFamily: "'DM Sans', sans-serif" }}>{supportAccess.tier.summary}</p>
                                         <p style={{ color: t.textTertiary, fontSize: 11, marginTop: 6, fontFamily: "'DM Sans', sans-serif" }}>
-                                            {supportAccess.asyncCoaching ? `Async coaching on • ${supportAccess.remainingLiveCoachSessions} live coach sessions left this year` : "AI-first only"}
+                                            {supportAccess.asyncCoaching ? `Unlimited counselor support on ${session?.tier === "premium" ? `• ${supportAccess.remainingLiveTherapySessions} therapy sessions left` : ""}` : "AI-first only"}
                                         </p>
                                     </div>
                                     <div style={{ padding: "8px 12px", borderRadius: 14, background: theme === "dark" ? "rgba(179,157,219,0.18)" : "rgba(179,157,219,0.14)", fontSize: 11, fontWeight: 700, color: t.text }}>
@@ -1219,17 +1272,17 @@ export default function KAIbiganDemo() {
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
                                 {[
                                     { label: "AI Companion", icon: "\ud83e\udde0", gradient: "linear-gradient(135deg, #667eea, #764ba2)", next: SCREENS.AI_CHAT },
-                                    { label: supportAccess.asyncCoaching ? "Coach Support" : "Coach Locked", icon: "\ud83d\udc64", gradient: supportAccess.asyncCoaching ? "linear-gradient(135deg, #43e97b, #38f9d7)" : "linear-gradient(135deg, #848484, #b5b5b5)", next: supportAccess.asyncCoaching ? SCREENS.COACH_DIR : SCREENS.HOME },
-                                    { label: supportAccess.psychiatristAccess ? "Psychiatrist" : "Premium Psychiatry", icon: "\ud83e\ude7a", gradient: supportAccess.psychiatristAccess ? "linear-gradient(135deg, #a18cd1, #7f7fd5)" : "linear-gradient(135deg, #9d8fb1, #bcb5c7)", next: supportAccess.psychiatristAccess ? SCREENS.PSYCHIATRIST_DIR : SCREENS.HOME },
+                                    { label: supportAccess.asyncCoaching ? "Guidance Counselor" : "Counselor Locked", icon: "\ud83d\udc64", gradient: supportAccess.asyncCoaching ? "linear-gradient(135deg, #43e97b, #38f9d7)" : "linear-gradient(135deg, #848484, #b5b5b5)", next: supportAccess.asyncCoaching ? SCREENS.COACH_DIR : SCREENS.HOME },
+                                    { label: supportAccess.psychiatristAccess ? "Professional Care" : "Premium Professional", icon: "\ud83e\ude7a", gradient: supportAccess.psychiatristAccess ? "linear-gradient(135deg, #a18cd1, #7f7fd5)" : "linear-gradient(135deg, #9d8fb1, #bcb5c7)", next: supportAccess.psychiatristAccess ? SCREENS.PROFESSIONAL_DIR : SCREENS.HOME },
                                     { label: "Resources", icon: "\ud83d\udcda", gradient: "linear-gradient(135deg, #fa709a, #fee140)", next: SCREENS.RESOURCES },
                                 ].map((action) => (
                                 <GradientCard key={action.label} gradient={action.gradient} onClick={() => {
-                                    if (action.label === "Coach Locked") {
-                                        openToast("Starter accounts stay AI-first. Switch to Growth for human coaching.");
+                                    if (action.label === "Counselor Locked") {
+                                        openToast("Starter accounts stay AI-first. Switch to Growth for counselor support.");
                                         return;
                                     }
-                                    if (action.label === "Premium Psychiatry") {
-                                        openToast("Psychiatrist tele-consults unlock on Premium.");
+                                    if (action.label === "Premium Professional") {
+                                        openToast("Licensed professional sessions unlock on Premium.");
                                         return;
                                     }
                                     nav(action.next);
@@ -1239,11 +1292,11 @@ export default function KAIbiganDemo() {
                                 </GradientCard>
                             ))}
                         </div>
-                        <p style={{ color: t.textSecondary, fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>For Good Mornings</p>
+                        <p style={{ color: t.textSecondary, fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Recent Chat History</p>
                         {[
-                            { title: "New Day, Fresh Start", time: "4m 30s", gradient: "linear-gradient(90deg, #FFD93D, #FF9A76)" },
-                            { title: "Bright Mornings, Bold Beginnings", time: "2m 15s", gradient: "linear-gradient(90deg, #667eea, #764ba2)" },
-                            { title: "Awake, Energize, Conquer", time: "4m 20s", gradient: "linear-gradient(90deg, #fa709a, #fee140)" },
+                            { title: "Managing academic anxiety", time: "2 hours ago", gradient: "linear-gradient(90deg, #667eea, #764ba2)" },
+                            { title: "Sleep routine check-in", time: "Yesterday", gradient: "linear-gradient(90deg, #a18cd1, #fbc2eb)" },
+                            { title: "Talking through family pressure", time: "Tuesday", gradient: "linear-gradient(90deg, #fa709a, #fee140)" },
                         ].map((item) => (
                             <div key={item.title} onClick={() => nav(SCREENS.AI_CHAT)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 0", borderBottom: `1px solid ${t.border}`, cursor: "pointer" }}>
                                 <div style={{ flex: 1 }}>
@@ -1360,13 +1413,13 @@ export default function KAIbiganDemo() {
             case SCREENS.COACH_DIR:
                 return (
                     <div style={{ flex: 1, overflow: "auto", background: t.bg, padding: "0 20px 20px" }}>
-                        <ScreenHeader title={copy("coachHeading")} subtitle="Async coaching is available on Growth and Premium. Live sessions are capped at 2 per student per year." onBack={() => nav(SCREENS.HOME)} theme={theme} />
+                        <ScreenHeader title={copy("coachHeading")} subtitle="Guidance counselor messaging and live sessions are available on Growth and Premium." onBack={() => nav(SCREENS.HOME)} theme={theme} />
                         <div style={{ background: t.surface, borderRadius: 18, border: `1px solid ${t.cardBorder}`, padding: 16, marginBottom: 18 }}>
                             <p style={{ margin: 0, color: t.text, fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{supportAccess.tier.label} access</p>
                             <p style={{ margin: "6px 0 0", color: t.textSecondary, fontSize: 12, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>
                                 {supportAccess.asyncCoaching
-                                    ? `Async messaging is on. You have ${supportAccess.remainingLiveCoachSessions} of ${supportAccess.tier.liveCoachSessions} live sessions remaining this year.`
-                                    : "Starter accounts are AI-first and do not include human coaching."}
+                                    ? "Unlimited async messaging and free live counselor sessions are active."
+                                    : "Starter accounts are AI-first. You can still book live counselor sessions for a fee (Doctor's Fee + App Commission)."}
                             </p>
                         </div>
                         <div style={{ display: "flex", gap: 8, overflow: "auto", paddingBottom: 8, marginBottom: 18 }}>
@@ -1418,20 +1471,30 @@ export default function KAIbiganDemo() {
                                 {supportAccess.asyncCoaching ? (
                                     <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
                                         <button onClick={() => bookProvider("coach", coach, "Async thread opened · Reply within 6 hrs", "async")} style={{ width: "100%", padding: "12px", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #B39DDB, #81D4FA)", color: "#1a1a2e", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
-                                            Message Coach
+                                            Message Counselor
                                         </button>
                                         {coach.available ? (
                                             <button
-                                                onClick={() => supportAccess.canBookLiveCoach ? setBookingSheet({ type: "coach", provider: coach }) : openToast("You’ve used your 2 live coach sessions for this year. Async coaching is still available.")}
-                                                style={{ width: "100%", padding: "12px", borderRadius: 14, border: "none", background: supportAccess.canBookLiveCoach ? "linear-gradient(135deg, #7ED6A2, #4CAF50)" : "linear-gradient(135deg, #9ea7a1, #bcc5be)", color: "#1a1a2e", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
+                                                onClick={() => openBookingCalendar("coach", coach)}
+                                                style={{ width: "100%", padding: "12px", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #7ED6A2, #4CAF50)", color: "#1a1a2e", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
                                             >
-                                                {supportAccess.canBookLiveCoach ? `Book Live Session (${supportAccess.remainingLiveCoachSessions} left)` : "Live Session Cap Reached"}
+                                                Book Live Session
                                             </button>
                                         ) : null}
                                     </div>
                                 ) : (
-                                    <div style={{ marginTop: 14, padding: 14, borderRadius: 14, background: t.pillBg, color: t.textSecondary, fontSize: 12, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>
-                                        Human coaching unlocks on Growth and Premium accounts. Starter stays AI-first by design.
+                                    <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+                                        <div style={{ padding: 14, borderRadius: 14, background: t.pillBg, color: t.textSecondary, fontSize: 12, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>
+                                            Counselor support unlocks on Growth and Premium accounts. Starter stays AI-first by design.
+                                        </div>
+                                        {coach.available ? (
+                                            <button
+                                                onClick={() => openBookingCalendar("coach", coach, true)}
+                                                style={{ width: "100%", padding: "12px", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #FFB84D, #FF9A76)", color: "#1a1a2e", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
+                                            >
+                                                Book Paid Session (Doctor's Fee + App Commission)
+                                            </button>
+                                        ) : null}
                                     </div>
                                 )}
                             </div>
@@ -1439,22 +1502,60 @@ export default function KAIbiganDemo() {
                     </div>
                 );
 
-            case SCREENS.COACH_BOOKING_CONFIRM:
+            case SCREENS.BOOKING_CALENDAR: {
+                const activeBooking = bookingContext;
+                const slots = activeBooking?.type === "coach"
+                    ? ["Tomorrow · 10:00 AM", "Tomorrow · 3:00 PM", "Fri · 1:30 PM", "Sat · 11:00 AM"]
+                    : [activeBooking?.provider?.nextSlot || "Tomorrow · 1:00 PM", "Sat · 11:30 AM", "Mon · 2:00 PM", "Tue · 4:30 PM"];
+
+                return (
+                    <div style={{ flex: 1, background: t.bg, padding: "0 20px 20px", display: "flex", flexDirection: "column" }}>
+                        <ScreenHeader title="Booking Calendar" subtitle={activeBooking?.provider?.name || "Select a provider"} onBack={() => nav(activeBooking?.type === "coach" ? SCREENS.COACH_DIR : SCREENS.PROFESSIONAL_DIR)} theme={theme} />
+                        <div style={{ background: t.surface, borderRadius: 18, border: `1px solid ${t.cardBorder}`, padding: 16, marginBottom: 16 }}>
+                            <p style={{ margin: 0, color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Choose a slot</p>
+                            <p style={{ margin: "4px 0 0", color: t.text, fontSize: 14, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+                                {activeBooking?.type === "coach" ? "Guidance Counselor Session" : "Licensed Professional Session"}
+                            </p>
+                            {activeBooking?.isPaid && (
+                                <p style={{ margin: "4px 0 0", color: "#FFB84D", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>
+                                    Paid Session (Doctor's Fee + App Commission)
+                                </p>
+                            )}
+                        </div>
+                        <div style={{ display: "grid", gap: 10 }}>
+                            {slots.map((slot) => (
+                                <button
+                                    key={slot}
+                                    onClick={() => activeBooking && bookProvider(activeBooking.type, activeBooking.provider, slot, "live", activeBooking.isPaid)}
+                                    style={{ width: "100%", textAlign: "left", padding: "14px 16px", borderRadius: 16, border: `1px solid ${t.pillBorder}`, background: t.pillBg, color: t.text, fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
+                                >
+                                    {slot}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }
+
+            case SCREENS.BOOKING_CONFIRM:
                 return (
                     <div style={{ flex: 1, background: t.bg, padding: "0 24px 24px", display: "flex", flexDirection: "column" }}>
-                        <ScreenHeader title="Session Confirmed" onBack={() => nav(SCREENS.COACH_DIR)} theme={theme} />
+                        <ScreenHeader title="Booking Confirmed" onBack={() => nav(SCREENS.HOME)} theme={theme} />
                         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
                             <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(126,214,162,0.18)", display: "flex", alignItems: "center", justifyContent: "center", color: "#7ED6A2", fontSize: 34 }}>{"\u2713"}</div>
-                            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: t.text, marginTop: 18 }}>{confirmation?.mode === "async" ? `Async coaching opened with ${confirmation?.name}` : `You're booked with ${confirmation?.name}`}</p>
+                            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: t.text, marginTop: 18 }}>
+                                {confirmation?.mode === "async" ? `Async thread opened with ${confirmation?.name}` : `You're booked with ${confirmation?.name}`}
+                            </p>
                             <div style={{ width: "100%", marginTop: 20, background: t.surface, borderRadius: 20, border: `1px solid ${t.cardBorder}`, padding: 18, textAlign: "left" }}>
                                 {[
                                     { label: confirmation?.mode === "async" ? "Response window" : "Date & time", value: confirmation?.slot },
                                     { label: confirmation?.mode === "async" ? "Format" : "Duration", value: confirmation?.mode === "async" ? "Asynchronous messaging" : "45 min" },
-                                    { label: confirmation?.mode === "async" ? "Priority rule" : "Meeting link", value: confirmation?.mode === "async" ? "Live sessions remain limited to 2/year" : "https://zoom.us/j/kaibigan-demo" },
+                                    { label: "Provider type", value: confirmation?.type === "coach" ? "Guidance counselor" : "Licensed professional" },
+                                    ...(confirmation?.isPaid ? [{ label: "Session Fee", value: "Doctor's Rate + Commission" }] : []),
                                 ].map((item) => (
-                                    <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: 14, padding: "8px 0", borderBottom: item.label === "Meeting link" ? "none" : `1px solid ${t.border}` }}>
+                                    <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: 14, padding: "8px 0", borderBottom: item.label === "Provider type" || item.label === "Session Fee" ? "none" : `1px solid ${t.border}` }}>
                                         <span style={{ color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
-                                        <span style={{ color: t.text, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", textAlign: "right" }}>{item.value}</span>
+                                        <span style={{ color: item.label === "Session Fee" ? "#FFB84D" : t.text, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", textAlign: "right" }}>{item.value}</span>
                                     </div>
                                 ))}
                             </div>
@@ -1470,65 +1571,84 @@ export default function KAIbiganDemo() {
                     </div>
                 );
 
-            case SCREENS.PSYCHIATRIST_DIR:
+            case SCREENS.PROFESSIONAL_DIR:
                 return (
                     <div style={{ flex: 1, overflow: "auto", background: t.bg, padding: "0 20px 20px" }}>
-                        <ScreenHeader title="Psychiatrist Tele-consults" subtitle="Level 3 support through your school partnership." onBack={() => nav(SCREENS.HOME)} theme={theme} />
+                        <ScreenHeader title="Licensed Professionals" subtitle="Level 3 support: psychologists, psychiatrists, and therapists." onBack={() => nav(SCREENS.HOME)} theme={theme} />
                         <div style={{ background: t.surface, borderRadius: 18, border: `1px solid ${t.cardBorder}`, padding: 16, marginBottom: 18 }}>
                             <p style={{ margin: 0, color: t.text, fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{supportAccess.tier.label} access</p>
                             <p style={{ margin: "6px 0 0", color: t.textSecondary, fontSize: 12, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>
-                                {supportAccess.psychiatristAccess ? "Premium includes psychiatrist tele-consults after triage or Red Flag escalation." : "Psychiatrist tele-consults are reserved for Premium accounts. Growth and Starter routes continue through async coaching, guidance escalation, and crisis resources."}
+                                {supportAccess.psychiatristAccess
+                                    ? "Premium includes 2 free bookings with licensed professionals. Additional sessions are paid (Doctor's Fee + App Commission)."
+                                    : "Professional bookings for Starter and Growth accounts are paid (Doctor's Fee + App Commission)."}
                             </p>
                         </div>
-                        {PSYCHIATRISTS.map((doctor) => (
-                            <div key={doctor.name} style={{ background: t.surface, borderRadius: 20, padding: 18, marginBottom: 14, border: `1px solid ${t.cardBorder}` }}>
+                        {filteredProfessionals.map((professional) => (
+                            <div key={professional.name} style={{ background: t.surface, borderRadius: 20, padding: 18, marginBottom: 14, border: `1px solid ${t.cardBorder}` }}>
                                 <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                                    <MiniBlob color={doctor.color} face="calm" size={48} />
+                                    <MiniBlob color={professional.color} face="calm" size={48} />
                                     <div style={{ flex: 1 }}>
-                                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: t.text, fontSize: 15 }}>{doctor.name}</p>
-                                        <p style={{ color: t.textSecondary, fontSize: 12, marginTop: 4, fontFamily: "'DM Sans', sans-serif" }}>{doctor.specialty}</p>
-                                        <p style={{ color: "#7ED6A2", fontSize: 12, marginTop: 8, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>Next slot: {doctor.nextSlot}</p>
+                                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: t.text, fontSize: 15 }}>{professional.name}</p>
+                                        <p style={{ color: t.textSecondary, fontSize: 12, marginTop: 4, fontFamily: "'DM Sans', sans-serif" }}>{professional.discipline} · {professional.specialty}</p>
+                                        <p style={{ color: "#7ED6A2", fontSize: 12, marginTop: 8, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>Next slot: {professional.nextSlot}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => supportAccess.psychiatristAccess ? setBookingSheet({ type: "psychiatrist", provider: doctor }) : openToast("Psychiatrist tele-consults unlock on Premium.")} style={{ width: "100%", marginTop: 14, padding: "12px", borderRadius: 14, border: "none", background: supportAccess.psychiatristAccess ? "linear-gradient(135deg, #B39DDB, #81D4FA)" : "linear-gradient(135deg, #9d8fb1, #bcb5c7)", color: "#1a1a2e", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
-                                    {supportAccess.psychiatristAccess ? "Book now" : "Premium only"}
-                                </button>
+                                <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedProfessional(professional);
+                                            nav(SCREENS.PROFESSIONAL_PROFILE);
+                                        }}
+                                        style={{ width: "100%", padding: "12px", borderRadius: 14, border: `1px solid ${t.pillBorder}`, background: "transparent", color: t.text, fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
+                                    >
+                                        View profile
+                                    </button>
+                                    <button
+                                        onClick={() => openBookingCalendar("professional", professional, !(supportAccess.psychiatristAccess && supportAccess.canBookLiveTherapy))}
+                                        style={{ width: "100%", padding: "12px", borderRadius: 14, border: "none", background: supportAccess.psychiatristAccess && supportAccess.canBookLiveTherapy ? "linear-gradient(135deg, #B39DDB, #81D4FA)" : "linear-gradient(135deg, #FFB84D, #FF9A76)", color: "#1a1a2e", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
+                                    >
+                                        {supportAccess.psychiatristAccess && supportAccess.canBookLiveTherapy ? `Book now (${supportAccess.remainingLiveTherapySessions} free left)` : "Book Paid Session (Doctor's Fee + App Commission)"}
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
                 );
 
-            case SCREENS.PSYCHIATRIST_BOOKING_CONFIRM:
+            case SCREENS.PROFESSIONAL_PROFILE: {
+                const professional = selectedProfessional || PROFESSIONALS[0];
                 return (
-                    <div style={{ flex: 1, background: t.bg, padding: "0 24px 24px", display: "flex", flexDirection: "column" }}>
-                        <ScreenHeader title="Tele-consult Confirmed" onBack={() => nav(SCREENS.PSYCHIATRIST_DIR)} theme={theme} />
-                        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
-                            <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(126,214,162,0.18)", display: "flex", alignItems: "center", justifyContent: "center", color: "#7ED6A2", fontSize: 34 }}>{"\u2713"}</div>
-                            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: t.text, marginTop: 18 }}>You're booked with {confirmation?.name}</p>
-                            <p style={{ color: t.textSecondary, fontSize: 13, lineHeight: 1.6, marginTop: 12, fontFamily: "'DM Sans', sans-serif", maxWidth: 260 }}>
-                                A secure Zoom link will arrive in your app notifications 30 minutes before your session. Your session is covered by your school partnership.
-                            </p>
-                            <div style={{ width: "100%", marginTop: 20, background: t.surface, borderRadius: 20, border: `1px solid ${t.cardBorder}`, padding: 18, textAlign: "left" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${t.border}` }}>
-                                    <span style={{ color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Date & time</span>
-                                    <span style={{ color: t.text, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{confirmation?.slot}</span>
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
-                                    <span style={{ color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Meeting</span>
-                                    <span style={{ color: t.text, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>Secure Zoom consult</span>
+                    <div style={{ flex: 1, overflow: "auto", background: t.bg, padding: "0 20px 20px" }}>
+                        <ScreenHeader title="Professional Profile" onBack={() => nav(SCREENS.PROFESSIONAL_DIR)} theme={theme} />
+                        <div style={{ background: t.surface, borderRadius: 20, border: `1px solid ${t.cardBorder}`, padding: 18 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                <MiniBlob color={professional.color} face="calm" size={56} />
+                                <div>
+                                    <p style={{ margin: 0, color: t.text, fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{professional.name}</p>
+                                    <p style={{ margin: "4px 0 0", color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>{professional.discipline} · {professional.specialty}</p>
                                 </div>
                             </div>
-                        </div>
-                        <div style={{ display: "grid", gap: 10 }}>
-                            <button onClick={() => openToast("Added")} style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #7ED6A2, #4CAF50)", color: "#1a1a2e", fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
-                                Add to calendar
-                            </button>
-                            <button onClick={() => nav(SCREENS.HOME)} style={{ width: "100%", padding: "15px", borderRadius: 16, border: `1px solid ${t.pillBorder}`, background: "transparent", color: t.text, fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
-                                Back to Home
+                            <p style={{ margin: "14px 0 0", color: t.textSecondary, fontSize: 13, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>{professional.bio}</p>
+                            <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+                                {professional.credentials.map((credential) => (
+                                    <div key={credential} style={{ padding: "10px 12px", borderRadius: 12, background: t.pillBg, color: t.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>
+                                        {credential}
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 12, background: t.pillBg, color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>
+                                Can prescribe: {professional.canPrescribe ? "Yes" : "No"}
+                            </div>
+                            <button
+                                onClick={() => openBookingCalendar("professional", professional, !(supportAccess.psychiatristAccess && supportAccess.canBookLiveTherapy))}
+                                style={{ width: "100%", marginTop: 14, padding: "12px", borderRadius: 14, border: "none", background: supportAccess.psychiatristAccess && supportAccess.canBookLiveTherapy ? "linear-gradient(135deg, #7ED6A2, #4CAF50)" : "linear-gradient(135deg, #FFB84D, #FF9A76)", color: "#1a1a2e", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
+                            >
+                                {supportAccess.psychiatristAccess && supportAccess.canBookLiveTherapy ? `Book through calendar (${supportAccess.remainingLiveTherapySessions} free left)` : "Book Paid Session (Doctor's Fee + App Commission)"}
                             </button>
                         </div>
                     </div>
                 );
+            }
 
             case SCREENS.MOOD_CALENDAR: {
                 const recentMoods = [...moods].slice(-28);
@@ -1640,8 +1760,8 @@ export default function KAIbiganDemo() {
                             <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: t.text, fontSize: 14 }}>Plan & preference</p>
                             <p style={{ fontFamily: "'DM Sans', sans-serif", color: t.textTertiary, fontSize: 11, marginTop: 4 }}>{supportAccess.tier.summary}</p>
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10 }}>
-                                <span style={{ color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Live coach sessions left</span>
-                                <span style={{ color: t.text, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{supportAccess.remainingLiveCoachSessions}</span>
+                                <span style={{ color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Live therapy sessions left</span>
+                                <span style={{ color: t.text, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{supportAccess.tier.id === "premium" ? supportAccess.remainingLiveTherapySessions : "N/A"}</span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
                                 <span style={{ color: t.textSecondary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Cultural preference</span>
@@ -1823,26 +1943,6 @@ export default function KAIbiganDemo() {
                             </>
                         ) : null}
 
-                        {bookingSheet ? (
-                            <>
-                                <div onClick={() => setBookingSheet(null)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45 }} />
-                                <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, minHeight: "42%", borderRadius: "24px 24px 0 0", background: t.bg, padding: "24px 20px 28px", zIndex: 46, animation: "sheetUp 0.2s ease" }}>
-                                    <div style={{ width: 46, height: 4, borderRadius: 999, background: t.textMuted, margin: "0 auto 18px" }} />
-                                    <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 24, fontWeight: 700, color: t.text }}>Choose a time</p>
-                                    <p style={{ color: t.textSecondary, fontSize: 13, marginTop: 8, fontFamily: "'DM Sans', sans-serif" }}>{bookingSheet.provider.name}</p>
-                                    <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
-                                        {(bookingSheet.type === "coach"
-                                            ? ["Tomorrow · 10:00 AM", "Tomorrow · 3:00 PM", "Fri · 1:30 PM", "Sat · 11:00 AM"]
-                                            : [bookingSheet.provider.nextSlot, "Sat 11:30 AM", "Mon 2:00 PM", "Tue 4:30 PM"]).map((slot) => (
-                                                <button key={slot} onClick={() => bookProvider(bookingSheet.type, bookingSheet.provider, slot)} style={{ width: "100%", textAlign: "left", padding: "14px 16px", borderRadius: 16, border: `1px solid ${t.pillBorder}`, background: t.pillBg, color: t.text, fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
-                                                    {slot}
-                                                </button>
-                                            ))}
-                                    </div>
-                                </div>
-                            </>
-                        ) : null}
-
                         {redFlagState.open ? (
                             <>
                                 <div onClick={() => setRedFlagState({ open: false, onSafe: null })} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50 }} />
@@ -1870,8 +1970,8 @@ export default function KAIbiganDemo() {
                                         <button ref={safeButtonRef} onClick={closeRedFlag} style={{ width: "100%", marginTop: 18, padding: "15px", borderRadius: 16, border: `1px solid ${t.pillBorder}`, background: "transparent", color: t.text, fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
                                             I'm safe for now
                                         </button>
-                                        <button onClick={() => { setRedFlagState({ open: false, onSafe: null }); nav(SCREENS.PSYCHIATRIST_DIR); }} style={{ background: "none", border: "none", color: "#FF8A80", textDecoration: "underline", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", display: "block", margin: "16px auto 0" }}>
-                                            Talk to a psychiatrist instead
+                                        <button onClick={() => { setRedFlagState({ open: false, onSafe: null }); nav(SCREENS.PROFESSIONAL_DIR); }} style={{ background: "none", border: "none", color: "#FF8A80", textDecoration: "underline", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", display: "block", margin: "16px auto 0" }}>
+                                            Talk to a licensed professional instead
                                         </button>
                                     </div>
                                 </div>

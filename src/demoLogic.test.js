@@ -52,8 +52,8 @@ test("mockAIReply returns topic-aware scripted support", () => {
 });
 
 test("translateDemoString falls back to English", () => {
-    assert.equal(translateDemoString("fil", "coachHeading"), "Mag-book ng Coach");
-    assert.equal(translateDemoString("x", "coachHeading"), "Book a Coach");
+    assert.equal(translateDemoString("fil", "coachHeading"), "Mag-book ng Guidance Counselor");
+    assert.equal(translateDemoString("x", "coachHeading"), "Book a Guidance Counselor");
 });
 
 test("tier config exposes async and psychiatrist access by plan", () => {

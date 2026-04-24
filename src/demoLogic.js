@@ -15,22 +15,25 @@ export const ACCOUNT_TIERS = [
         liveCoachSessions: 0,
         asyncCoaching: false,
         psychiatristAccess: false,
+        liveTherapySessions: 0,
     },
     {
         id: "growth",
         label: "Growth",
-        summary: "AI + asynchronous coaching, with 2 live coach sessions each year.",
-        liveCoachSessions: 2,
+        summary: "AI + guidance counselor messaging and unlimited live counselor sessions.",
+        liveCoachSessions: Infinity,
         asyncCoaching: true,
         psychiatristAccess: false,
+        liveTherapySessions: 0,
     },
     {
         id: "premium",
         label: "Premium",
-        summary: "Full stepped-care access, including psychiatrist tele-consults.",
-        liveCoachSessions: 2,
+        summary: "Full stepped-care access, including 2 licensed professional sessions.",
+        liveCoachSessions: Infinity,
         asyncCoaching: true,
         psychiatristAccess: true,
+        liveTherapySessions: 2,
     },
 ];
 
@@ -76,7 +79,7 @@ export const DEMO_TRANSLATIONS = {
         sosLabel: "SOS",
         aiSubtitle: "Online • Level 1 CBT",
         moodPrompt: "Select the blob that matches your mood",
-        coachHeading: "Book a Coach",
+        coachHeading: "Book a Guidance Counselor",
         resourceHeading: "Resource Library",
     },
     fil: {
@@ -84,7 +87,7 @@ export const DEMO_TRANSLATIONS = {
         sosLabel: "SAKLOLO",
         aiSubtitle: "Online • Antas 1 CBT",
         moodPrompt: "Piliin ang blob na tugma sa nararamdaman mo",
-        coachHeading: "Mag-book ng Coach",
+        coachHeading: "Mag-book ng Guidance Counselor",
         resourceHeading: "Mga Resource",
     },
 };
@@ -167,16 +170,24 @@ export function countLiveCoachBookings(bookings = []) {
     return bookings.filter((booking) => booking.type === "coach" && booking.mode === "live").length;
 }
 
+export function countLiveTherapyBookings(bookings = []) {
+    return bookings.filter((booking) => booking.type === "professional" && booking.mode === "live").length;
+}
+
 export function getSupportAccess(tierId, bookings = []) {
     const tier = getTierConfig(tierId);
     const usedLiveCoachSessions = countLiveCoachBookings(bookings);
+    const usedLiveTherapySessions = countLiveTherapyBookings(bookings);
 
     return {
         tier,
         asyncCoaching: tier.asyncCoaching,
         psychiatristAccess: tier.psychiatristAccess,
         usedLiveCoachSessions,
-        remainingLiveCoachSessions: Math.max(0, tier.liveCoachSessions - usedLiveCoachSessions),
-        canBookLiveCoach: usedLiveCoachSessions < tier.liveCoachSessions,
+        remainingLiveCoachSessions: tier.liveCoachSessions === Infinity ? "Unlimited" : Math.max(0, tier.liveCoachSessions - usedLiveCoachSessions),
+        canBookLiveCoach: tier.liveCoachSessions === Infinity || usedLiveCoachSessions < tier.liveCoachSessions,
+        usedLiveTherapySessions,
+        remainingLiveTherapySessions: Math.max(0, (tier.liveTherapySessions || 0) - usedLiveTherapySessions),
+        canBookLiveTherapy: usedLiveTherapySessions < (tier.liveTherapySessions || 0),
     };
 }
